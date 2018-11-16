@@ -13,6 +13,10 @@ after_initialize do
       users_to_display = User.where(id: all_users_part_of_current_users_groups)
       users_to_display
     end
+
+    def added_at
+      ""
+    end
   end
 
   require_dependency "app/controllers/application_controller"
