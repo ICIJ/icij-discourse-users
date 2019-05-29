@@ -1,5 +1,5 @@
 class IcijGroupUserSerializer < ApplicationSerializer
-  attributes :title, :last_posted_at, :last_seen_at, :added_at, :id, :username, :name, :avatar_template
+  attributes :title, :last_posted_at, :last_seen_at, :added_at, :id, :username, :name, :country, :avatar_template
 
   def name
     Hash === user ? user[:name] : user.try(:name)
