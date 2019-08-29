@@ -204,40 +204,21 @@
       {{/unless}}
     </section>
 
-    {{#if canViewFullProfile}}
-      {{#mobile-nav class='main-nav' desktopClass="nav nav-pills user-nav" currentPath=currentPath}}
-        {{#unless model.profile_hidden}}
-          <li>{{#link-to 'user.summary'}}{{i18n 'user.summary.title'}}{{/link-to}}</li>
-          <li>{{#link-to 'userActivity'}}{{i18n 'user.activity_stream'}}{{/link-to}}</li>
-        {{/unless}}
-        {{#if showNotificationsTab}}
-          <li>
-            {{#link-to 'userNotifications'}}
-              {{d-icon "comment" class="glyph"}}{{i18n 'user.notifications'}}
-            {{/link-to}}
-          </li>
-        {{/if}}
-        {{#if showPrivateMessages}}
-          <li>{{#link-to 'userPrivateMessages'}}{{d-icon "envelope-o"}}{{i18n 'user.private_messages'}}{{/link-to}}</li>
-        {{/if}}
-        {{#if canInviteToForum}}
-          <li>{{#link-to 'userInvited'}}{{d-icon "user-plus"}}{{i18n 'user.invited.title'}}{{/link-to}}</li>
-        {{/if}}
-        {{#if showBadges}}
-          <li>{{#link-to 'user.badges'}}{{d-icon "certificate"}}{{i18n 'badges.title'}}{{/link-to}}</li>
-        {{/if}}
-        {{plugin-outlet name="user-main-nav" tagName='' connectorTagName='li' args=(hash model=model)}}
-        {{#if model.can_edit}}
-          <li>{{#link-to 'preferences'}}{{d-icon "cog"}}{{i18n 'user.preferences'}}{{/link-to}}</li>
-        {{/if}}
-      {{/mobile-nav}}
+    {{#mobile-nav class='main-nav' desktopClass="nav nav-pills user-nav" currentPath=currentPath}}
+      {{#unless model.profile_hidden}}
+        <li>{{#link-to 'userActivity'}}{{i18n 'user.activity_stream'}}{{/link-to}}</li>
+      {{/unless}}
+      {{plugin-outlet name="user-main-nav" tagName='' connectorTagName='li' args=(hash model=model)}}
+      {{#if model.can_edit}}
+        <li>{{#link-to 'preferences'}}{{d-icon "cog"}}{{i18n 'user.preferences'}}{{/link-to}}</li>
+      {{/if}}
+    {{/mobile-nav}}
 
-      <div class='user-table'>
-        <div class='wrapper'>
-          {{outlet}}
-        </div>
+    <div class='user-table'>
+      <div class='wrapper'>
+        {{outlet}}
       </div>
-    {{/if}}
+    </div>
 
   {{/d-section}}
 </div>
