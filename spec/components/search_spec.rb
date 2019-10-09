@@ -1051,7 +1051,17 @@ describe Search do
 
   context 'include_diacritics' do
     before { SiteSetting.search_ignore_accents = false }
-    let!(:post1) { Fabricate(:post, raw: 'สวัสดี Régis hello') }
+
+    let(:post_user) { Fabricate(:user) }
+    let(:searching_user) { Fabricate(:coding_horror) }
+    let(:group) { Fabricate(:icij_group) }
+
+    before do
+      group.users << post_user
+      group.users << searching_user
+    end
+
+    let!(:post1) { Fabricate(:post, raw: 'สวัสดี Régis hello', user: post_user) }
 
     it ('allows strips correctly') do
       results = Search.execute('hello', type_filter: 'topic')
