@@ -124,7 +124,7 @@ after_initialize do
   require_dependency "application_controller"
   DirectoryItemsController.class_eval do
     PAGE_SIZE = 50
-    
+
     def index
       raise Discourse::InvalidAccess.new(:enable_user_directory) unless SiteSetting.enable_user_directory?
 
@@ -188,18 +188,18 @@ after_initialize do
       more_params = params.slice(:period, :order, :asc).permit!
       more_params[:page] = page + 1
 
-      # # Put yourself at the top of the first page
-      # if result.present? && current_user.present? && page == 0
-      #
-      #   position = result.index { |r| r.user_id == current_user.id }
-      #
-      #   # Don't show the record unless you're not in the top positions already
-      #   if (position || 10) >= 10
-      #     your_item = DirectoryItem.where(period_type: period_type, user_id: current_user.id).first
-      #     result.insert(0, your_item) if your_item
-      #   end
-      #
-      # end
+      # Put yourself at the top of the first page
+      if result.present? && current_user.present? && page == 0
+
+        position = result.index { |r| r.user_id == current_user.id }
+
+        # Don't show the record unless you're not in the top positions already
+        if (position || 10) >= 10
+          your_item = DirectoryItem.where(period_type: period_type, user_id: current_user.id).first
+          result.insert(0, your_item) if your_item
+        end
+
+      end
 
       render_json_dump(directory_items: serialize_data(result, DirectoryItemSerializer),
                        total_rows_directory_items: result_count,
@@ -425,25 +425,12 @@ after_initialize do
 
   require_dependency 'basic_user_serializer'
   class ::BasicUserSerializer
-    attributes :country, :created_at_age, :last_seen_age
+    attributes :country
 
     def country
       user.country
       rescue
       user.try(:country)
-    end
-
-    def created_at_age
-      Time.now - object.created_at
-      rescue
-      nil
-    end
-
-    def last_seen_age
-      return nil if object.last_seen_at.blank?
-      Time.now - object.last_seen_at
-      rescue
-      nil
     end
   end
 
