@@ -4,7 +4,6 @@
 # authors: Madeline O'Leary
 
 after_initialize do
-  require_dependency "user"
   class ::User
     def self.filter_by_username_or_email_or_country(filter, current_user)
       if filter =~ /.+@.+/
@@ -50,8 +49,6 @@ after_initialize do
     end
   end
 
-  # require_dependency "user_search"
-  require_dependency "search"
   # Searches for a user by username or full text or name (if enabled in SiteSettings)
   class UserSearch
     def initialize(term, opts = {})
@@ -163,8 +160,6 @@ after_initialize do
     end
   end
 
-
-  require_dependency "../lib/auth/result"
   class Auth::Result
     attr_accessor :user, :name, :username, :email, :user,
                   :email_valid, :country, :extra_data, :awaiting_activation,
@@ -235,7 +230,10 @@ after_initialize do
     end
   end
 
-  require_dependency "directory_item_serializer"
+  class ::UserSerializer
+    attributes :country
+  end
+
   class ::DirectoryItemSerializer
     attributes :country,
               :user_created_at_age,
@@ -259,7 +257,63 @@ after_initialize do
     end
   end
 
-  require_dependency "application_controller"
+  SearchController.class_eval do
+    def show
+      @search_term = params.permit(:q)[:q]
+
+      # a q param has been given but it's not in the correct format
+      # eg: ?q[foo]=bar
+      if params[:q].present? && !@search_term.present?
+        raise Discourse::InvalidParameters.new(:q)
+      end
+
+      if @search_term.present? &&
+         @search_term.length < SiteSetting.min_search_term_length
+        raise Discourse::InvalidParameters.new(:q)
+      end
+
+      if @search_term.present? && @search_term.include?("\u0000")
+        raise Discourse::InvalidParameters.new("string contains null byte")
+      end
+
+      search_args = {
+        type_filter: 'topic',
+        guardian: guardian,
+        include_blurbs: true,
+        blurb_length: 300,
+        page: if params[:page].to_i <= 10
+                [params[:page].to_i, 1].max
+              end
+      }
+
+      context, type = lookup_search_context
+      if context
+        search_args[:search_context] = context
+        search_args[:type_filter] = type if type
+      end
+
+      search_args[:search_type] = :full_page
+      search_args[:ip_address] = request.remote_ip
+      search_args[:user_id] = current_user.id if current_user.present?
+
+      @search_term = params[:q]
+      search = Search.new(@search_term, search_args)
+      result = search.execute
+      result.find_user_data(guardian) if result
+
+      serializer = serialize_data(result, GroupedSearchResultSerializer, result: result)
+
+      respond_to do |format|
+        format.html do
+          store_preloaded("search", MultiJson.dump(serializer))
+        end
+        format.json do
+          render_json_dump(serializer)
+        end
+      end
+    end
+  end
+
   DirectoryItemsController.class_eval do
     PAGE_SIZE = 50
 
@@ -271,9 +325,8 @@ after_initialize do
 
       if current_user
         groups = current_user.groups.where(icij_group: true).pluck(:group_id)
-        users = GroupUser.where(group_id: groups).pluck(:user_id)
-        fellow_icij_project_members = User.where(id: users).pluck(:id)
-        result = DirectoryItem.where(period_type: period_type).includes(:user).where(user_id: fellow_icij_project_members)
+        users = GroupUser.where(group_id: groups).pluck(:user_id).uniq
+        result = DirectoryItem.where(period_type: period_type).includes(:user).where(user_id: users)
       else
         result = DirectoryItem.where(period_type: period_type).includes(:user)
       end
@@ -345,11 +398,13 @@ after_initialize do
     end
   end
 
-  require_dependency "application_controller"
-  require_dependency "../../lib/icij_user_index_query"
   UsersController.class_eval do
+    HONEYPOT_KEY ||= 'HONEYPOT_KEY'
+    CHALLENGE_KEY ||= 'CHALLENGE_KEY'
+
     def create
       params.require(:email)
+      params.require(:username)
       params.permit(:user_fields)
 
       unless SiteSetting.allow_new_registrations
@@ -364,19 +419,19 @@ after_initialize do
         return fail_with("login.email_too_long")
       end
 
-      if User.reserved_username?(params[:username])
+      if clashing_with_existing_route?(params[:username]) || User.reserved_username?(params[:username])
         return fail_with("login.reserved_username")
       end
 
-      new_user_params = user_params
+      params[:locale] ||= I18n.locale unless current_user
+
+      new_user_params = user_params.except(:timezone)
       user = User.unstage(new_user_params)
+      # unknown attribute timezone causing problem here
       user = User.new(new_user_params) if user.nil?
 
       # Handle API approval
-      if user.approved
-        user.approved_by_id ||= current_user.id
-        user.approved_at ||= Time.zone.now
-      end
+      ReviewableUser.set_approved_fields!(user, current_user) if user.approved?
 
       # Handle custom fields
       user_fields = UserField.all
@@ -420,12 +475,13 @@ after_initialize do
       end
 
       if user.save
+
         authentication.finish
         activation.finish
+        user.update_timezone_if_missing(params[:timezone])
 
-        # save user email in session, to show on account-created page
-        session["user_created_message"] = activation.message
-        session[SessionController::ACTIVATE_USER_KEY] = user.id
+        secure_session[HONEYPOT_KEY] = nil
+        secure_session[CHALLENGE_KEY] = nil
 
         render json: {
           success: true,
@@ -484,17 +540,21 @@ after_initialize do
         :title,
         :date_of_birth,
         :muted_usernames,
+        :ignored_usernames,
         :theme_ids,
         :locale,
         :bio_raw,
         :location,
         :website,
         :dismissed_banner_key,
-        :profile_background,
-        :card_background
+        :profile_background_upload_url,
+        :card_background_upload_url,
+        :primary_group_id,
+        :featured_topic_id
       ]
 
-      permitted << { custom_fields: User.editable_user_custom_fields } unless User.editable_user_custom_fields.blank?
+      editable_custom_fields = User.editable_user_custom_fields(by_staff: current_user.try(:staff?))
+      permitted << { custom_fields: editable_custom_fields } unless editable_custom_fields.blank?
       permitted.concat UserUpdater::OPTION_ATTR
       permitted.concat UserUpdater::CATEGORY_IDS.keys.map { |k| { k => [] } }
       permitted.concat UserUpdater::TAG_NAMES.keys
@@ -503,8 +563,7 @@ after_initialize do
         .permit(permitted, theme_ids: [])
         .reverse_merge(
           ip_address: request.remote_ip,
-          registration_ip_address: request.remote_ip,
-          locale: user_locale
+          registration_ip_address: request.remote_ip
         )
 
       if !UsernameCheckerService.is_developer?(result['email']) &&
@@ -519,8 +578,6 @@ after_initialize do
     end
   end
 
-  require_dependency "../lib/search"
-  require_dependency "../lib/search/grouped_search_results"
   class ::Search
     def find_grouped_results
       if @results.type_filter.present?
@@ -560,7 +617,6 @@ after_initialize do
     end
   end
 
-  require_dependency 'basic_user_serializer'
   class ::BasicUserSerializer
     attributes :country
 
@@ -571,7 +627,6 @@ after_initialize do
     end
   end
 
-  require_dependency 'admin_user_list_serializer'
   class ::AdminUserListSerializer
     attributes :country
 
@@ -582,7 +637,6 @@ after_initialize do
     end
   end
 
-  require_dependency 'search_result_user_serializer'
   class ::SearchResultUserSerializer
     attributes :country
 

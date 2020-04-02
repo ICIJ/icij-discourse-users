@@ -62,9 +62,9 @@ describe DirectoryItemsController do
 
         json = ::JSON.parse(response.body)
         expect(json).to be_present
-        expect(json['directory_items'].length).to eq(1)
+        expect(json['directory_items'].length).to eq(2)
         expect(json['total_rows_directory_items']).to eq(1)
-        expect(json['directory_items'][0]['user']['username']).to eq('eviltrout')
+        expect(json['directory_items'][1]['user']['username']).to eq('eviltrout')
       end
 
       it "does not find user by name, if that user is not a project group member" do

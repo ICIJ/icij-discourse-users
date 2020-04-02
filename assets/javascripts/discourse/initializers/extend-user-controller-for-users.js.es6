@@ -6,7 +6,6 @@ import optionalService from "discourse/lib/optional-service";
 
 export default {
   name: 'extend-user-controller-for-users',
-  before: 'inject-discourse-objects',
   initialize() {
     UserController.reopen({
       @computed("model")

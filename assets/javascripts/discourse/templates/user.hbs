@@ -3,7 +3,6 @@
 
     <section class="{{if collapsedInfo 'collapsed-info'}} about {{if hasProfileBackground 'has-background' 'no-background'}}"  style={{model.profileBackground}}>
     {{#unless collapsedInfo}}
-
       {{#if canViewFullProfile}}
         {{#if showStaffCounters}}
           <div class='staff-counters'>
@@ -37,21 +36,21 @@
           </div>
         {{/if}}
       {{/if}}
-    {{/unless}}
+      <div class="user-profile-image" style={{model.profileBackgroundUrl}}></div>
+      {{/unless}}
 
-      <div class='profile-image'></div>
       <div class='details'>
         <div class='primary'>
           {{user-profile-avatar user=model}}
           <section class='controls'>
             <ul>
               {{#if model.can_send_private_message_to_user}}
-              <li>
-                <a class='btn btn-primary compose-pm' {{action "composePrivateMessage" model}}>
-                  {{d-icon "envelope"}}
-                  {{i18n 'user.private_message'}}
-                </a>
-              </li>
+                <li>
+                  {{d-button class="btn-primary compose-pm"
+                    action=(route-action "composePrivateMessage" model)
+                    icon="envelope"
+                    label="user.private_message"}}
+                </li>
               {{/if}}
               {{#if currentUser.staff}}
                 <li><a href={{model.adminPath}} class="btn btn-default">{{d-icon "wrench"}}{{i18n 'admin.user.show_admin_profile'}}</a></li>
@@ -77,15 +76,17 @@
           </section>
 
           <div class="primary-textual">
-            <h1 class="{{if nameFirst "full-name" "username"}}">{{if nameFirst model.name (format-username model.username)}} {{user-status model currentUser=currentUser}}</h1>
-            <h2 class="{{if nameFirst "username" "full-name"}}">{{#if nameFirst}}{{model.username}}{{else}}{{model.name}}{{/if}}</h2>
-            {{#if model.staged}}
-              <h2 class="staged">{{i18n 'user.staged'}}</h2>
-            {{/if}}
-            {{#if model.title}}
-              <h3>{{model.title}}</h3>
-            {{/if}}
-            {{plugin-outlet name="user-post-names" args=(hash model=model)}}
+            <div class="user-profile-names">
+              <h1 class="{{if nameFirst "full-name" "username"}}">{{if nameFirst model.name (format-username model.username)}} {{user-status model currentUser=currentUser}}</h1>
+              <h2 class="{{if nameFirst "username" "full-name"}}">{{#if nameFirst}}{{model.username}}{{else}}{{model.name}}{{/if}}</h2>
+              {{#if model.staged}}
+                <h2 class="staged">{{i18n 'user.staged'}}</h2>
+              {{/if}}
+              {{#if model.title}}
+                <h3>{{model.title}}</h3>
+              {{/if}}
+              {{plugin-outlet name="user-post-names" args=(hash model=model)}}
+            </div>
             <h3 class="location-and-website">
             {{#if model.location}}{{d-icon "map-marker"}} {{model.location}}{{/if}}
             {{#if model.website_name}}
@@ -151,7 +152,6 @@
           {{#if model.created_at}}
             <div><dt>{{i18n 'user.created'}}</dt><dd>{{bound-date model.created_at}}</dd></div>
           {{/if}}
-
           {{#if canViewFullProfile}}
             {{#if model.last_posted_at}}
               <div><dt>{{i18n 'user.last_posted'}}</dt><dd>{{bound-date model.last_posted_at}}</dd></div>
