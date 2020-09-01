@@ -4,7 +4,14 @@
 # authors: Madeline O'Leary
 
 after_initialize do
+
+  User.register_custom_field_type("organization", :string)
+
   class ::User
+    def organization_name
+      self.custom_fields["organization"]
+    end
+
     def self.filter_by_username_or_email_or_country(filter, current_user)
       if filter =~ /.+@.+/
         # probably an email so try the bypass
@@ -231,7 +238,7 @@ after_initialize do
   end
 
   class ::UserSerializer
-    attributes :country
+    attributes :country, :organization_name
   end
 
   class ::DirectoryItemSerializer
@@ -474,6 +481,10 @@ after_initialize do
         user.country = session[:authentication][:country]
       end
 
+      if !session[:authentication][:organization].present?
+        user.custom_fields["organization"] = session[:authentication][:organization]
+      end
+
       if user.save
 
         authentication.finish
@@ -619,7 +630,7 @@ after_initialize do
 
   class ::BasicUserSerializer
     attributes :country
-
+    
     def country
       user.country
       rescue
