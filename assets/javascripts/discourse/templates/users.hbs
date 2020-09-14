@@ -4,7 +4,7 @@
       <div class='directory'>
         {{plugin-outlet name="users-top" connectorTagName='div' args=(hash model=model)}}
         <div class='clearfix'>
-          {{text-field value=nameInput placeholderKey="directory.filter_name" class="filter-name no-blur"}}
+          {{text-field value=nameInput placeholderKey="directory.filter_any" class="filter-name no-blur"}}
         </div>
 
         {{#conditional-loading-spinner condition=model.loading}}
@@ -13,6 +13,7 @@
               <thead>
                 <th>&nbsp;</th>
                 {{directory-toggle field="country" order=order asc=asc}}
+                {{directory-toggle field="organization" order=order asc=asc}}
                 {{directory-toggle field="last_seen" order=order asc=asc}}
                 {{directory-toggle field="created_at" order=order asc=asc}}
               </thead>
