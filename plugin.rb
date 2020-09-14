@@ -1,5 +1,5 @@
 # name: icij-discourse-users
-# about: A plugin for using groups to separate and organize categories and topics.
+# about: A plugin for customizing the user experience and user object.
 # version: 0.0.1
 # authors: Madeline O'Leary
 
@@ -7,12 +7,18 @@ after_initialize do
 
   User.register_custom_field_type("organization", :string)
 
-  class ::User
+  module ExtendUserInstance
     def organization_name
       self.custom_fields["organization"]
     end
 
-    def self.filter_by_username_or_email_or_country(filter, current_user)
+    def added_at
+      ""
+    end
+  end
+
+  module ExtendUserClass
+    def filter_by_username_or_email_or_country(filter, current_user)
       if filter =~ /.+@.+/
         # probably an email so try the bypass
         if user_id = UserEmail.where("lower(email) = ?", filter.downcase).pluck(:user_id).first
@@ -20,10 +26,7 @@ after_initialize do
         end
       end
 
-      icij_group_ids = Group.icij_groups.pluck(:id)
-      current_user_groups = current_user.group_users.where(group_id: icij_group_ids).pluck(:group_id)
-      all_users_part_of_current_users_groups = GroupUser.where(group_id: current_user_groups).pluck(:user_id).uniq
-      user_ids = User.where(id: all_users_part_of_current_users_groups).pluck(:id)
+      user_ids = User.members_visible_icij_groups(current_user).pluck(:id)
 
       users = joins(:primary_email)
 
@@ -40,7 +43,7 @@ after_initialize do
       end
     end
 
-    def self.all_group_users(current_user)
+    def all_group_users(current_user)
       icij_group_ids = Group.icij_projects.pluck(:id)
       current_user_groups = current_user.group_users.where(group_id: icij_group_ids).pluck(:group_id)
       all_users_part_of_current_users_groups = GroupUser.where(group_id: current_user_groups).pluck(:user_id).uniq
@@ -51,13 +54,14 @@ after_initialize do
       users
     end
 
-    def added_at
-      ""
-    end
   end
 
-  # Searches for a user by username or full text or name (if enabled in SiteSettings)
-  class UserSearch
+  class ::User
+    prepend ExtendUserInstance
+    extend ExtendUserClass
+  end
+
+  module ExtendUserSearchInstance
     def initialize(term, opts = {})
       @term = term
       @term_like = "#{term.downcase.gsub("_", "\\_")}%"
@@ -112,8 +116,7 @@ after_initialize do
             # .where("user_search_data.search_data @@ #{query}")
             # .order(DB.sql_fragment("CASE WHEN country LIKE ? THEN 0 ELSE 1 END ASC", @term_like, @term_like))
 
-            # User.where("username ILIKE :term_like  OR country ILIKE :term_like", term_like: "%#{country}%").count
-            users = users.where("username_lower ILIKE :term_like OR country ILIKE :term_like", term_like: @term_like)
+            users = users.includes(:_custom_fields).references(:_custom_fields).where("users.username_lower ILIKE :term_like OR users.country ILIKE :term_like OR user_custom_fields.value ILIKE :term_like OR LOWER(users.name) ILIKE :term_like", term_like: @term_like)
         else
           users = users.where("username_lower LIKE :term_like OR country LIKE :term_like", term_like: @term_like)
         end
@@ -167,14 +170,12 @@ after_initialize do
     end
   end
 
-  class Auth::Result
-    attr_accessor :user, :name, :username, :email, :user,
-                  :email_valid, :country, :extra_data, :awaiting_activation,
-                  :awaiting_approval, :authenticated, :authenticator_name,
-                  :requires_invite, :not_allowed_from_ip_address,
-                  :admin_not_allowed_from_ip_address, :omit_username,
-                  :skip_email_validation, :destination_url, :omniauth_disallow_totp
+  # Searches for a user by username or full text or name (if enabled in SiteSettings)
+  class UserSearch
+    prepend ExtendUserSearchInstance
+  end
 
+  module ExtendAuthResultInstance
     def session_data
       { email: email,
         username: username,
@@ -237,34 +238,37 @@ after_initialize do
     end
   end
 
-  class ::UserSerializer
-    attributes :country, :organization_name
+  class Auth::Result
+    attr_accessor :user, :name, :username, :email, :user,
+                  :email_valid, :country, :extra_data, :awaiting_activation,
+                  :awaiting_approval, :authenticated, :authenticator_name,
+                  :requires_invite, :not_allowed_from_ip_address,
+                  :admin_not_allowed_from_ip_address, :omit_username,
+                  :skip_email_validation, :destination_url, :omniauth_disallow_totp
+
+    prepend ExtendAuthResultInstance
   end
 
-  class ::DirectoryItemSerializer
-    attributes :country,
-              :user_created_at_age,
-              :user_last_seen_age
+  add_to_serializer(:user, :country) { object.country }
+  add_to_serializer(:user, :organization_name) { object.organization_name }
 
-    def country
-      object.user.country
-    end
+  add_to_serializer(:directory_item, :country) { object.user.country }
+  add_to_serializer(:directory_item, :organization_name) { object.user.organization_name }
 
-    def user_created_at_age
-      Time.now - object.user.created_at
-      rescue
-      nil
-    end
-
-    def user_last_seen_age
-      return nil if object.user.last_seen_at.blank?
-      Time.now - object.user.last_seen_at
-      rescue
-      nil
-    end
+  add_to_serializer(:directory_item, :user_created_at_age) do
+    Time.now - object.user.created_at
+  rescue
+    nil
   end
 
-  SearchController.class_eval do
+  add_to_serializer(:directory_item, :user_last_seen_age) do
+    return nil if object.user.last_seen_at.blank?
+    Time.now - object.user.last_seen_at
+  rescue
+    nil
+  end
+
+  module ExtendSearchController
     def show
       @search_term = params.permit(:q)[:q]
 
@@ -319,6 +323,10 @@ after_initialize do
         end
       end
     end
+  end
+
+  class ::SearchController
+    prepend ExtendSearchController
   end
 
   DirectoryItemsController.class_eval do
@@ -405,6 +413,7 @@ after_initialize do
     end
   end
 
+  # using class_eval here because i'm not sure if a module would be able to override private methods, so overriding them at run-time
   UsersController.class_eval do
     HONEYPOT_KEY ||= 'HONEYPOT_KEY'
     CHALLENGE_KEY ||= 'CHALLENGE_KEY'
@@ -589,7 +598,7 @@ after_initialize do
     end
   end
 
-  class ::Search
+  module ExtendSearchInstance
     def find_grouped_results
       if @results.type_filter.present?
         raise Discourse::InvalidAccess.new("invalid type filter") unless Search.facets.include?(@results.type_filter)
@@ -610,6 +619,10 @@ after_initialize do
       # In the event of a PG:Error return nothing, it is likely they used a foreign language whose
       # locale is not supported by postgres
     end
+  end
+
+  class ::Search
+    prepend ExtendSearchInstance
 
     private
 
@@ -628,33 +641,21 @@ after_initialize do
     end
   end
 
-  class ::BasicUserSerializer
-    attributes :country
-    
-    def country
-      user.country
-      rescue
-      user.try(:country)
-    end
+  add_to_serializer(:basic_user, :country) do
+    user.country
+  rescue
+    user.try(:country)
   end
 
-  class ::AdminUserListSerializer
-    attributes :country
-
-    def country
-      user.country
-      rescue
-      user.try(:country)
-    end
+  add_to_serializer(:admin_user_list, :country) do
+    user.country
+  rescue
+    user.try(:country)
   end
 
-  class ::SearchResultUserSerializer
-    attributes :country
-
-    def country
-      user.country
-      rescue
-      user.try(:country)
-    end
+  add_to_serializer(:search_result_user, :country) do
+    user.country
+  rescue
+    user.try(:country)
   end
 end
